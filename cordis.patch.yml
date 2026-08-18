@@ -1,0 +1,3 @@
+- insert:
+    - id: codex-tools
+      name: '@shuind/dsh-codex'
