@@ -35,7 +35,7 @@ describe('Codex tool catalog', () => {
     ])
   })
 
-  it('keeps apply_patch grammar metadata and Codex parameter names model-visible', () => {
+  it('keeps Codex parameter names and result schemas model-visible', () => {
     const { definitions } = mount()
     const exec = definitions.find(definition => definition.name === 'exec_command')
     const patch = definitions.find(definition => definition.name === 'apply_patch')
@@ -102,10 +102,6 @@ describe('Codex tool catalog', () => {
       },
       required: ['plan'],
     })
-    expect(patch?.constrainedSampling?.type).toBe('grammar')
-    expect(patch?.constrainedSampling?.type === 'grammar'
-      ? patch.constrainedSampling.variants.openai_lark
-      : undefined).toContain('start: begin_patch hunk+ end_patch')
   })
 
   it('renders Codex-compatible apply_patch and plan results', () => {

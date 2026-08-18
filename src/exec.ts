@@ -5,8 +5,13 @@ import { randomBytes } from 'node:crypto'
 import { resolve as resolvePath } from 'node:path'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
-import type { ShellProcess, ShellProcessRead } from '@deepseek-ai/dsh-shell'
-import type { TerminalSendResult, TerminalSessionId } from '@deepseek-ai/dsh-terminal'
+import type { ShellExecRequest, ShellProcess, ShellProcessRead } from '@deepseek-ai/dsh-shell'
+import type {
+  TerminalSendRequest,
+  TerminalSendResult,
+  TerminalSessionId,
+  TerminalSpawnRequest,
+} from '@deepseek-ai/dsh-terminal'
 import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import type {} from '@deepseek-ai/dsh-shell-env'
@@ -44,6 +49,13 @@ export interface ExecResult {
 type StoredSession =
   | { kind: 'shell'; process: ShellProcess }
   | { kind: 'terminal'; owner: Agent; id: TerminalSessionId }
+
+// rc.5 exposed these optional controls; rc.6 moved them into the mounted
+// providers. Keep passing them when an older provider accepts them while
+// allowing the rc.6 service definitions to type-check.
+type CodexShellExecRequest = ShellExecRequest & { login?: boolean }
+type CodexTerminalSpawnRequest = TerminalSpawnRequest & { shell?: string; login?: boolean }
+type CodexTerminalSendRequest = TerminalSendRequest & { waitMs?: number }
 
 interface AgentExecState {
   nextId: number
@@ -194,18 +206,20 @@ export async function runExecCommand(
     if (agent === undefined || terminals === undefined) {
       throw new Error('exec_command with tty=true requires the dsh terminal capability and an owning agent session')
     }
-    const spawned = await terminals.spawn(agent, {
+    const spawnRequest: CodexTerminalSpawnRequest = {
       type: 'shell',
       ...args.shell === undefined ? {} : { shell: args.shell },
       login: args.login ?? true,
       ...workdir === undefined ? {} : { cwd: workdir },
-    }, exec.signal)
-    const operation = terminals.startSend(agent, spawned.sessionId, {
+    }
+    const spawned = await terminals.spawn(agent, spawnRequest, exec.signal)
+    const sendRequest: CodexTerminalSendRequest = {
       text: commandFor(args),
       submit: true,
       waitMs: waitMs(args.yield_time_ms, config.defaultYieldTimeMs),
       signal: exec.signal,
-    })
+    }
+    const operation = terminals.startSend(agent, spawned.sessionId, sendRequest)
     const result = await operation.done
     const output = terminalResult(result, maxBytes, startedAt)
     if (result.sessionStatus.kind === 'running') {
@@ -218,7 +232,7 @@ export async function runExecCommand(
 
   const policy = ctx.get('sandboxPolicy')?.resolve(exec.agent === undefined ? {} : { session: exec.agent.session })
   const dshEnv = ctx.get('shellEnv')?.collect(exec)
-  const process = ctx.shell.start(ctx.shell.resolve({
+  const shellRequest: CodexShellExecRequest = {
     command: commandFor(args),
     ...args.shell === undefined ? {} : { shell: args.shell },
     login: args.login ?? true,
@@ -226,7 +240,8 @@ export async function runExecCommand(
     stdoutMaxBytes: maxBytes,
     ...dshEnv === undefined ? {} : { dshEnv },
     ...policy === undefined ? {} : { sandboxPolicy: policy },
-  }))
+  }
+  const process = ctx.shell.start(ctx.shell.resolve(shellRequest))
   const completed = await waitForShell(process, waitMs(args.yield_time_ms, config.defaultYieldTimeMs), exec.signal)
   const output = readShellOutput(process.readOutput(), maxBytes)
   if (!completed || process.status === 'running') {
@@ -291,12 +306,13 @@ export async function runWriteStdin(
 
   const terminals = ctx.get('terminals')
   if (terminals === undefined) throw new Error('the dsh terminal capability is no longer available')
-  const operation = terminals.startSend(agent, session.id, {
+  const sendRequest: CodexTerminalSendRequest = {
     text: chars,
     submit: false,
     waitMs: waitMs(args.yield_time_ms, chars.length > 0 ? config.writeYieldTimeMs : config.pollYieldTimeMs),
     signal: exec.signal,
-  })
+  }
+  const operation = terminals.startSend(agent, session.id, sendRequest)
   const result = await operation.done
   const output = terminalResult(result, maxBytes, startedAt)
   if (result.sessionStatus.kind === 'running') {

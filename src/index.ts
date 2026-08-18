@@ -12,7 +12,7 @@ import type { TodoItem } from '@deepseek-ai/dsh-tool-todo'
 import type {} from '@deepseek-ai/dsh-shell'
 import type {} from '@deepseek-ai/dsh-shell-env'
 import type {} from '@deepseek-ai/dsh-terminal'
-import { applyPatchHunks, APPLY_PATCH_GRAMMAR, parsePatch } from './patch.ts'
+import { applyPatchHunks, parsePatch } from './patch.ts'
 import type { PatchFile } from './patch.ts'
 import { renderExecResult, runExecCommand, runWriteStdin } from './exec.ts'
 import type { ExecCommandArgs, ExecResult, WriteStdinArgs } from './exec.ts'
@@ -152,7 +152,20 @@ async function deletePatchedFile(
   exec: ToolExecution,
   policy: SandboxExecutionPolicy | undefined,
 ): Promise<void> {
-  await ctx.fs.remove(target, { version }, exec.signal, policy)
+  // The rc.6 dsh-fs service definition omits deletion, while the local and
+  // sandboxed providers still expose it. Use the provider capability when it
+  // exists and fail with a useful tool error for write-only backends.
+  type RemoveFile = (
+    target: FsTarget,
+    expected: { version: FsInfo['version'] },
+    signal: AbortSignal,
+    sandboxPolicy?: SandboxExecutionPolicy,
+  ) => Promise<void>
+  const remove = (ctx.fs as unknown as { remove?: RemoveFile }).remove
+  if (typeof remove !== 'function') {
+    throw new Error('apply_patch: the configured dsh filesystem does not support file deletion')
+  }
+  await remove.call(ctx.fs, target, { version }, exec.signal, policy)
   ctx.emit('fs/observed', target, { kind: 'absent' }, exec)
 }
 
@@ -299,10 +312,6 @@ function registerPatchTool(ctx: Context): void {
     description: APPLY_PATCH_DESCRIPTION,
     parameters: {
       input: { type: 'string', required: true, description: 'The complete patch text.' },
-    },
-    constrainedSampling: {
-      type: 'grammar',
-      variants: { openai_lark: APPLY_PATCH_GRAMMAR },
     },
     output: {
       schema: {

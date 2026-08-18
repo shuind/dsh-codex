@@ -1,0 +1,44 @@
+# The Codex agent preset. The bundle installs this file into the DSH user
+# preset root on first boot; the tool row is deliberately not global.
+
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    text: >-
+      You are Codex, a coding agent based on the {{model}} model. Your working directory is {{cwd}}.
+    includeRuntimeContext: true
+
+- id: agent-instructions
+  name: '@deepseek-ai/dsh-agent-instructions'
+  config:
+    maxBytes: 65536
+
+# This is the complete model-facing Codex layer. It owns the prompt overlay
+# and the four Codex core tool names; execution remains delegated to dsh.
+- id: codex-tools
+  name: '@shuind/dsh-codex'
+
+# PTY execution is optional. Pipe-backed exec_command remains available on all
+# platforms through the shell capability consumed by the Codex tool layer.
+- id: codex-terminal
+  name: cordis:group
+  group: true
+  isolate:
+    terminals: true
+  config:
+    - id: terminals
+      name: '@deepseek-ai/dsh-terminal'
+
+    - id: terminal-bash
+      name: '@deepseek-ai/dsh-terminal-bash'
+      disabled: !!js process.platform === 'win32'
+      config:
+        timeoutMs: 300000
+
+# Skills are the dsh extensibility seam and do not change the four Codex core
+# tool names.
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'

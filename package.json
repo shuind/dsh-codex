@@ -1,6 +1,6 @@
 {
   "name": "@shuind/dsh-codex",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "A minimal Codex harness for GPT models that do not fit DSH's native interface, while remaining compatible with the DSH plugin ecosystem.",
   "type": "module",
   "main": "lib/index.js",
@@ -14,6 +14,10 @@
       "types": "./lib/types/invariant.d.ts",
       "default": "./lib/invariant.js"
     },
+    "./installer": {
+      "types": "./lib/types/installer.d.ts",
+      "default": "./lib/installer.js"
+    },
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./src/*": "./src/*",
     "./package.json": "./package.json"
@@ -21,9 +25,11 @@
   "files": [
     "lib/index.js",
     "lib/invariant.js",
+    "lib/installer.js",
     "lib/types/**/*.js",
     "lib/types/**/*.d.ts",
     "cordis.patch.yml",
+    "presets/codex",
     "README.md",
     "README.zh.md",
     "LICENSE"
@@ -89,16 +95,16 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
     "@deepseek-ai/dsh-agent": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-fs": "0.0.1-rc.1",
-    "@deepseek-ai/dsh-invariants": "0.0.1-rc.1",
-    "@deepseek-ai/dsh-sandbox": "0.0.1-rc.1",
-    "@deepseek-ai/dsh-sandbox-policy": "0.0.1-rc.1",
-    "@deepseek-ai/dsh-shell": "0.0.1-rc.5",
-    "@deepseek-ai/dsh-shell-env": "0.0.1-rc.3",
-    "@deepseek-ai/dsh-system-prompt": "0.0.1-rc.1",
-    "@deepseek-ai/dsh-tool-todo": "0.0.1-rc.1",
-    "@deepseek-ai/dsh-terminal": "0.0.1-rc.3",
-    "@deepseek-ai/dsh-tools": "0.0.1-rc.1",
+    "@deepseek-ai/dsh-fs": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-invariants": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-sandbox": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-sandbox-policy": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-shell": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-shell-env": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-system-prompt": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-tool-todo": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-terminal": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
     "@types/node": "^22.20.0",
     "tsdown": "^0.22.2",
     "typescript": "^6.0.3",

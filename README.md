@@ -8,9 +8,29 @@ A minimal Codex harness for GPT models that do not fit DSH's native interface. I
 
 This package is a model-facing compatibility layer, not a replacement runtime. DSH still owns the session, services, profile composition, providers, and plugin lifecycle. Install it into an existing DSH profile and continue composing other DSH plugins normally.
 
+## Install, enable, and select
+
+These are separate operations:
+
+1. Install the plugin into the profile used by Web:
+
+   ```sh
+   dsh plugin --profile web add @shuind/dsh-codex
+   ```
+
+   The package remains a normal DSH bundle, so it appears in the plugin list and does not produce peer warnings from its DSH dependencies.
+
+2. Enable it by starting or restarting that profile. The bundle installs the packaged `codex` preset into `$DSH_HOME/.agent-presets/codex` when that directory does not already exist. It never overwrites an existing user preset.
+
+3. Create a new conversation and choose `Codex 模式` in the mode menu. The plugin list and the agent preset roster are different surfaces. DSH 0.1.0-rc.6 discovers user presets from `$DSH_HOME/.agent-presets`; newer DSH versions may provide a system `codex` preset themselves.
+
+If an older manual copy left `$DSH_HOME/.agent-presets/codex` without a valid `agent.cordis.yml`, repair or remove that directory and restart the profile. The installer preserves existing directories by design.
+
+The selected preset is fixed when a session is created. Selecting Codex affects new conversations; it does not rewrite the prompt or tool catalog of an existing session.
+
 ## What it does
 
-The `codex` preset mounts this package together with the dsh Skill filesystem and Skill tool. The package owns the Codex prompt section and these exact model-facing tool names and descriptions:
+The packaged `codex` preset mounts this package together with the dsh Skill filesystem and Skill tool. The package owns the Codex prompt section and these exact model-facing tool names and descriptions:
 
 - `exec_command` — runs a command in a PTY, returning output or a session id for ongoing interaction.
 - `write_stdin` — writes characters to an existing unified exec session and returns recent output.
@@ -25,23 +45,21 @@ The exported tool registrations are authoritative for the complete schemas. The 
 
 `apply_patch` parses the Codex patch language, resolves targets through dsh `fs`, applies version-checked writes/removes, observes the resulting filesystem state, and routes sandbox decisions through `sandboxPolicy`. It never writes through a second filesystem implementation. Add, update, delete, and move operations use dsh's normal filesystem errors and durable observations.
 
-`update_plan` appends the session's `todo/write` events and reuses `dsh-tool-todo`'s `registerTodosProjection` helper, so the plan is replayable and available to the Web surface without adding a second plan store or a second projection definition. The Codex package does not mount `todo_write`.
+`update_plan` appends the session's `todo/write` event. It does not depend on an extra runtime projection helper or maintain a second plan store; DSH owns the projection and replay path. This keeps the package compatible with both the older and newer `dsh-tool-todo` packages. The Codex package does not mount `todo_write`.
 
 ## Configuration
 
 The package accepts `defaultYieldTimeMs`, `pollYieldTimeMs`, `writeYieldTimeMs`, and `maxOutputBytes`. They control execution timing and retained output; protocol names, argument names, descriptions, and result fields are fixed. A sandboxing filesystem requires the corresponding dsh `sandboxPolicy` service.
 
-OpenAI Responses custom grammar is selected by the route capability `supportsOpenAIGrammarTools`. When that capability is present, `apply_patch` is serialized as an OpenAI `custom` grammar tool with the Codex patch grammar; a route that does not advertise it keeps the ordinary tool definition instead of assuming provider support.
+`apply_patch` uses the ordinary dsh tool definition in DSH 0.1.0-rc.6. Its `input` value is still the complete Codex freeform patch, while provider-specific tool serialization remains owned by the DSH route.
 
-## Install as a profile bundle
+## Bundle and preset composition
 
-The package declares a `dsh.bundle` patch that mounts the Codex core tools. Install it into a profile that already provides the dsh services listed in its peer dependencies:
+The package declares a `dsh.bundle` patch, but that patch only installs the preset template. It does not globally mount `@shuind/dsh-codex` or add Codex tools to standard, code, minimal, or other presets. The packaged `presets/codex/agent.cordis.yml` contains the single `codex-tools` row, so a Codex session mounts the prompt and four core tools exactly once.
 
-```sh
-dsh plugin add @shuind/dsh-codex
-```
+If you author another Codex preset, add `@shuind/dsh-codex` inside that preset's `agent.cordis.yml`, not to the profile's top-level patch. This also avoids a duplicate when a newer DSH release already ships a system Codex preset.
 
-The bundle adds the Codex tool layer. A complete Codex preset can add the persona, Skills, and optional terminal rows in its own profile patch.
+The preset deliberately keeps Skills, filesystem policy, shell providers, terminal providers, and Web presentation on dsh extension points. They can be changed by composing a different preset or adding the corresponding dsh rows without changing the Codex tool protocol.
 
 ## Model Experience
 
@@ -78,5 +96,5 @@ Tool results append to the conversation. A filesystem change or plan update affe
 - The preset is fixed for a session. Choosing `codex` affects new sessions; changing the selected preset in Web does not rewrite an existing session's prompt or tools.
 - PTY behavior depends on the mounted dsh Terminal provider. The shipped Windows composition disables the optional bash terminal row; pipe execution remains available through the selected shell service.
 - Pipe-backed `write_stdin` sessions do not accept non-empty stdin; interactive input requires a PTY-backed command.
-- The OpenAI custom grammar path requires a provider route that advertises `supportsOpenAIGrammarTools`; the protocol remains usable without that provider feature.
+- Provider-specific custom-tool or grammar serialization is outside this package; the Codex patch protocol remains usable through the ordinary dsh tool definition.
 - The package implements the Codex core protocol and deliberately leaves Skills, filesystem policy, shell providers, terminal providers, and Web presentation extensible through dsh plugins.
