@@ -12,7 +12,7 @@ describe('Codex preset installer', () => {
       installCodexPreset(target)
       expect(existsSync(join(target, 'agent.cordis.yml'))).toBe(true)
       expect(existsSync(join(target, 'preset.yml'))).toBe(true)
-      expect(readFileSync(join(target, 'agent.cordis.yml'), 'utf8')).toContain("name: '@shuind/dsh-codex'")
+      expect(readFileSync(join(target, 'agent.cordis.yml'), 'utf8')).toContain("name: '@shuind/dsh-codex-harness'")
 
       const custom = 'name: user-owned\n'
       writeFileSync(join(target, 'preset.yml'), custom)

@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@shuind/dsh-codex`.
- * @module @shuind/dsh-codex/invariant
+ * Package-owned invariant companion for `@shuind/dsh-codex-harness`.
+ * @module @shuind/dsh-codex-harness/invariant
  */
 
 /* jscpd:ignore-start */
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@shuind/dsh-codex'
+const PACKAGE_NAME = '@shuind/dsh-codex-harness'
 
 /** Codex companion plugin name. */
 export const name = 'codex-invariant'

@@ -1,4 +1,4 @@
-# @shuind/dsh-codex
+# @shuind/dsh-codex-harness
 
 [English](README.md) | 中文
 
@@ -15,7 +15,7 @@
 1. 把插件安装到 Web 使用的 profile：
 
    ```sh
-   dsh plugin --profile web add @shuind/dsh-codex
+   dsh plugin --profile web add @shuind/dsh-codex-harness
    ```
 
    本包仍是标准 DSH bundle，因此会显示在插件列表中；它的 DSH 依赖是 optional peer，不会因为本包产生 peer warning。
@@ -55,9 +55,9 @@ preset 在会话创建时确定。选择 Codex 只影响新建对话，不会改
 
 ## Bundle 与 preset 组合
 
-本包声明了 `dsh.bundle` patch，但这个 patch 只负责安装 preset 模板，不会把 `@shuind/dsh-codex` 全局挂载，也不会把 Codex 工具加入 standard、code、minimal 或其他 preset。随包的 `presets/codex/agent.cordis.yml` 只包含一个 `codex-tools` 行，因此 Codex 会话只挂载一次提示词和四个核心工具。
+本包声明了 `dsh.bundle` patch，但这个 patch 只负责安装 preset 模板，不会把 `@shuind/dsh-codex-harness` 全局挂载，也不会把 Codex 工具加入 standard、code、minimal 或其他 preset。随包的 `presets/codex/agent.cordis.yml` 只包含一个 `codex-tools` 行，因此 Codex 会话只挂载一次提示词和四个核心工具。
 
-如果你自己编写 Codex preset，请把 `@shuind/dsh-codex` 放在该 preset 的 `agent.cordis.yml` 中，不要放到 profile 顶层 patch。这样也不会和新版 DSH 自带的 system Codex preset 重复。
+如果你自己编写 Codex preset，请把 `@shuind/dsh-codex-harness` 放在该 preset 的 `agent.cordis.yml` 中，不要放到 profile 顶层 patch。这样也不会和新版 DSH 自带的 system Codex preset 重复。
 
 preset 仍把 Skills、文件系统策略、shell provider、terminal provider 和 Web 展示留给 dsh 扩展点；可以通过其他 preset 或对应的 dsh 行扩展，而不改变 Codex 工具协议。
 

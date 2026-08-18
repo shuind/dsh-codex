@@ -1,4 +1,4 @@
-# @shuind/dsh-codex
+# @shuind/dsh-codex-harness
 
 English | [中文](README.zh.md)
 
@@ -15,7 +15,7 @@ These are separate operations:
 1. Install the plugin into the profile used by Web:
 
    ```sh
-   dsh plugin --profile web add @shuind/dsh-codex
+   dsh plugin --profile web add @shuind/dsh-codex-harness
    ```
 
    The package remains a normal DSH bundle, so it appears in the plugin list and does not produce peer warnings from its DSH dependencies.
@@ -55,9 +55,9 @@ The package accepts `defaultYieldTimeMs`, `pollYieldTimeMs`, `writeYieldTimeMs`,
 
 ## Bundle and preset composition
 
-The package declares a `dsh.bundle` patch, but that patch only installs the preset template. It does not globally mount `@shuind/dsh-codex` or add Codex tools to standard, code, minimal, or other presets. The packaged `presets/codex/agent.cordis.yml` contains the single `codex-tools` row, so a Codex session mounts the prompt and four core tools exactly once.
+The package declares a `dsh.bundle` patch, but that patch only installs the preset template. It does not globally mount `@shuind/dsh-codex-harness` or add Codex tools to standard, code, minimal, or other presets. The packaged `presets/codex/agent.cordis.yml` contains the single `codex-tools` row, so a Codex session mounts the prompt and four core tools exactly once.
 
-If you author another Codex preset, add `@shuind/dsh-codex` inside that preset's `agent.cordis.yml`, not to the profile's top-level patch. This also avoids a duplicate when a newer DSH release already ships a system Codex preset.
+If you author another Codex preset, add `@shuind/dsh-codex-harness` inside that preset's `agent.cordis.yml`, not to the profile's top-level patch. This also avoids a duplicate when a newer DSH release already ships a system Codex preset.
 
 The preset deliberately keeps Skills, filesystem policy, shell providers, terminal providers, and Web presentation on dsh extension points. They can be changed by composing a different preset or adding the corresponding dsh rows without changing the Codex tool protocol.
 

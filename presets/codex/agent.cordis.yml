@@ -16,7 +16,7 @@
 # This is the complete model-facing Codex layer. It owns the prompt overlay
 # and the four Codex core tool names; execution remains delegated to dsh.
 - id: codex-tools
-  name: '@shuind/dsh-codex'
+  name: '@shuind/dsh-codex-harness'
 
 # PTY execution is optional. Pipe-backed exec_command remains available on all
 # platforms through the shell capability consumed by the Codex tool layer.
