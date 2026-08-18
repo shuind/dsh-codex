@@ -2,7 +2,6 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { registerTodosProjection } from '@deepseek-ai/dsh-tool-todo'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { FsInfo, FsTarget, FsWriteIntent } from '@deepseek-ai/dsh-fs'
@@ -390,7 +389,6 @@ export function apply(ctx: Context, config: Config = {}): void {
     throw new Error('codex: a sandboxing filesystem requires ctx.sandboxPolicy')
   }
   ctx.systemPrompt.section({ name: 'codex:base', order: 10, text: CODEX_BASE_PROMPT })
-  registerTodosProjection(ctx)
   registerExecTools(ctx, resolved)
   registerPatchTool(ctx)
   registerPlanTool(ctx)
