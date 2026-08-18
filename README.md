@@ -7,7 +7,7 @@ DSH 继续负责会话、文件系统、Shell、Skills 和插件扩展；本包�
 ## 安装
 
 ```sh
-dsh plugin --profile web add @shuind/dsh-codex-harness@0.1.9
+dsh plugin --profile web add @shuind/dsh-codex-harness@0.1.10
 ```
 
 重启 Web，创建新会话，在模式菜单中选择 `Codex 模式`。
@@ -19,7 +19,7 @@ dsh plugin --profile web remove @shuind/dsh-codex
 mv "$DSH_HOME/.agent-presets/codex" "$DSH_HOME/.agent-presets/codex.old"
 ```
 
-安装器会把随包提供的 preset 写入 `$DSH_HOME/.agent-presets/codex`，不会覆盖已有目录。
+安装器会把随包提供的 preset 写入 `$DSH_HOME/.agent-presets/codex`，不会覆盖已有目录。升级已有安装时，请先备份并移除旧的 `codex` preset 目录，再重启 Web，让新版本安装包含压缩组的 preset。
 
 ## 提供的工具
 
