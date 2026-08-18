@@ -1,7 +1,7 @@
 {
   "name": "@shuind/dsh-codex",
-  "version": "0.1.1",
-  "description": "Codex-compatible model-facing tools and prompt overlay for DeepSeek Harness",
+  "version": "0.1.2",
+  "description": "A minimal Codex harness for GPT models that do not fit DSH's native model-facing interface, while remaining compatible with the DSH plugin ecosystem.",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",

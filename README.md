@@ -2,7 +2,11 @@
 
 English | [中文](README.zh.md)
 
-The fixed Codex model-facing layer for a dsh Web session. It contributes Codex's prompt conventions and four core tool protocols while using dsh services for shell execution, terminals, filesystem policy, durable session state, and Skills. The preset is selected when the session is created; this package does not replace a live session's preset or tool catalog.
+A minimal Codex harness for GPT models that do not fit DSH's native model-facing interface. It keeps the DSH runtime, profiles, services, and plugin ecosystem, while presenting the model with the compact Codex prompt and core tool protocol. Existing DSH plugins continue to work; this package only replaces the model-facing layer.
+
+## DSH compatibility
+
+This package is a model-facing compatibility layer, not a replacement runtime. DSH still owns the session, services, profile composition, providers, and plugin lifecycle. Install it into an existing DSH profile and continue composing other DSH plugins normally.
 
 ## What it does
 

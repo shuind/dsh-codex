@@ -2,7 +2,11 @@
 
 [English](README.md) | 中文
 
-面向 dsh Web 会话的固定 Codex 模型层。它提供 Codex 的提示词约定和四个核心工具协议，同时把 shell 执行、终端、文件系统策略、可持久化会话状态和 Skills 交给 dsh 服务。preset 在创建会话时选择；本包不会替换运行中会话的 preset 或工具目录。
+面向不适配 DSH 原生模型接口的 GPT 模型，提供一个极简的 Codex harness。它保留 DSH 的运行时、profile、服务和插件生态，只把模型看到的提示词与核心工具切换为紧凑的 Codex 协议；现有 DSH 插件仍可继续使用，本包只替换模型面向的这一层。
+
+## DSH 兼容性
+
+本包是模型面向的兼容层，不是另一套运行时。会话、服务、profile 组合、provider 和插件生命周期仍由 DSH 管理。把它安装到现有 DSH profile 后，其他 DSH 插件仍可按原方式组合使用。
 
 ## 功能
 
