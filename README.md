@@ -7,7 +7,7 @@ DSH 继续负责会话、文件系统、Shell、Skills 和插件扩展；本包�
 ## 安装
 
 ```sh
-dsh plugin --profile web add @shuind/dsh-codex-harness@0.1.8
+dsh plugin --profile web add @shuind/dsh-codex-harness@0.1.9
 ```
 
 重启 Web，创建新会话，在模式菜单中选择 `Codex 模式`。

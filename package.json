@@ -1,6 +1,6 @@
 {
   "name": "@shuind/dsh-codex-harness",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "A minimal Codex harness for GPT models that do not fit DSH's native interface, while remaining compatible with the DSH plugin ecosystem.",
   "type": "module",
   "main": "lib/index.js",
@@ -43,7 +43,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/shuind/dsh-codex.git"
+    "url": "git+https://github.com/shuind/dsh-codex-harness.git"
   },
   "keywords": [
     "dsh-plugin",
