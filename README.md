@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-A minimal Codex harness for GPT models that do not fit DSH's native model-facing interface. It keeps the DSH runtime, profiles, services, and plugin ecosystem, while presenting the model with the compact Codex prompt and core tool protocol. Existing DSH plugins continue to work; this package only replaces the model-facing layer.
+A minimal Codex harness for GPT models that do not fit DSH's native interface. It keeps the DSH runtime, profiles, services, and plugin ecosystem, while presenting the model with the compact Codex prompt and core tool protocol. Existing DSH plugins continue to work; this package only replaces the model-facing layer.
 
 ## DSH compatibility
 

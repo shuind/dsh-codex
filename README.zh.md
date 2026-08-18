@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-面向不适配 DSH 原生模型接口的 GPT 模型，提供一个极简的 Codex harness。它保留 DSH 的运行时、profile、服务和插件生态，只把模型看到的提示词与核心工具切换为紧凑的 Codex 协议；现有 DSH 插件仍可继续使用，本包只替换模型面向的这一层。
+面向不适配 DSH 原生接口的 GPT 模型，提供一个极简的 Codex harness。它保留 DSH 的运行时、profile、服务和插件生态，只把模型看到的提示词与核心工具切换为紧凑的 Codex 协议；现有 DSH 插件仍可继续使用，本包只替换模型面向的这一层。
 
 ## DSH 兼容性
 
