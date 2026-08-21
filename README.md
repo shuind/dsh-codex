@@ -29,7 +29,7 @@ baseURL: https://your-responses-endpoint.example.com
 apiKeyEnv: OPENAI_API_KEY
 ```
 
-模型列表中填写中转站实际支持的 GPT 模型 ID。插件不会创建独立的 `openai-codex` route，也不会替换已有的 provider、endpoint 或凭据配置。
+模型列表中填写中转站实际支持的 GPT 模型 ID。
 
 ## 请求设置
 
