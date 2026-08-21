@@ -16,10 +16,16 @@ DSH 的通用 `@deepseek-ai/dsh-llm-pi-ai` 继续负责用户配置的 provider�
 ## 安装
 
 ```sh
-dsh plugin --profile web add @shuind/dsh-codex-harness@0.1.10
+dsh plugin --profile web add @shuind/dsh-codex-harness@0.1.12
 ```
 
 重启 Web，创建新会话，在模式菜单中选择 `Codex 模式`。
+
+## Fast 与上下文大小
+
+Codex 模式会在模型选择菜单中提供 `Fast` 控制。开启后，GPT Responses 请求会携带 `service_tier: "priority"`；它不是思考强度，也不会修改 `reasoning_effort`。该设置按 `codex` 设置命名空间保存，并作用于之后的请求。其他 preset 不会显示 Fast。
+
+点击上下文使用量指示器可以展开上下文设置。上下文大小使用整数 K tokens，可通过滑块或数字输入设置，范围为 `1K` 到 `1000K`；恢复模型默认值会删除覆盖。设置值用于下一次请求；上方的上下文 meter 显示当前请求实际使用的容量，因此修改设置后要发送下一次请求，上方的分母才会更新。这个值同时用于上下文容量投影、token meter、compaction 判断和适配器的响应 token 统计，而不只是修改显示文本。实际使用前请确认中转站和模型支持所选容量。
 
 ## 中转站配置
 

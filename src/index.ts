@@ -2,9 +2,10 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-llm'
+import type { LlmCallConfig } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { FsInfo, FsTarget, FsWriteIntent } from '@deepseek-ai/dsh-fs'
@@ -15,14 +16,24 @@ import type { TodoItem } from '@deepseek-ai/dsh-tool-todo'
 import type {} from '@deepseek-ai/dsh-shell'
 import type {} from '@deepseek-ai/dsh-shell-env'
 import type {} from '@deepseek-ai/dsh-terminal'
+import { CODEX_CONTEXT_MAX } from './context.ts'
 import { applyPatchHunks, parsePatch } from './patch.ts'
 import type { PatchFile } from './patch.ts'
 import { renderExecResult, runExecCommand, runWriteStdin } from './exec.ts'
 import type { ExecCommandArgs, ExecResult, WriteStdinArgs } from './exec.ts'
 import { hostedWebSearchStream, installHostedWebSearch, remoteCompactStream } from './remote.ts'
 
+declare module '@deepseek-ai/dsh-llm' {
+  interface LlmCallConfig {
+    /** Codex request context capacity override, in tokens. */
+    contextWindow?: number
+    /** Provider-facing service tier, for example Responses `priority`. */
+    serviceTier?: string
+  }
+}
+
 export const name = 'codex'
-export const inject = ['tools', 'systemPrompt', 'shell', 'fs', 'llm', 'credentials']
+export const inject = ['tools', 'systemPrompt', 'shell', 'fs', 'llm', 'credentials', 'settings']
 
 /** Configuration for the Codex shell result bridge. */
 export interface Config {
@@ -51,6 +62,22 @@ export const Config: z<Config> = z.object({
 })
 
 const LLM_PI_AI_SETTINGS = settingsNamespace('llm-pi-ai')
+/** Live Codex-only request controls shared by the Web controls and agent layer. */
+export const CODEX_SETTINGS_NAMESPACE = settingsNamespace('codex')
+
+export interface CodexSettings {
+  /** Use the Responses priority service tier for GPT requests. */
+  fast: boolean
+  /** Optional context capacity override, in tokens. */
+  contextWindow?: number
+}
+
+export const CODEX_SETTINGS_SCHEMA: z<CodexSettings> = z.object({
+  fast: z.boolean().default(false),
+  contextWindow: z.number().step(1).min(1).max(CODEX_CONTEXT_MAX),
+})
+
+const CODEX_SETTINGS_ENTRY: CodexSettings = { fast: false }
 const GPT_REASONING_EFFORTS = {
   low: 'low',
   medium: 'medium',
@@ -163,6 +190,31 @@ function watchConfiguredGptModels(ctx: Context): void {
     if (ns === LLM_PI_AI_SETTINGS) schedule()
   })
   schedule()
+}
+
+/** Install the optional settings source used by the request waterfall. */
+function installCodexSettings(ctx: Context): { current: () => CodexSettings } {
+  let source: () => CodexSettings = () => CODEX_SETTINGS_ENTRY
+  installSettingsSection(ctx, CODEX_SETTINGS_NAMESPACE, CODEX_SETTINGS_SCHEMA, CODEX_SETTINGS_ENTRY, {
+    setSource: (current) => { source = current },
+    onChange: () => {},
+  })
+  return { current: () => source() }
+}
+
+/** Apply the live Codex controls to one agent request without leaking them to other routes. */
+export function applyCodexRequestSettings(request: LlmCallConfig, settings: CodexSettings): LlmCallConfig {
+  const {
+    contextWindow: _inheritedContextWindow,
+    serviceTier: _inheritedServiceTier,
+    ...withoutCodexControls
+  } = request
+  if (!isGptModel(request.model)) return withoutCodexControls
+  return {
+    ...withoutCodexControls,
+    ...settings.contextWindow === undefined ? {} : { contextWindow: settings.contextWindow },
+    ...settings.fast ? { serviceTier: 'priority' } : {},
+  }
 }
 
 const CODEX_BASE_PROMPT = String.raw`You are Codex, based on {{model}}. You are running as a coding agent in dsh Web on a user's computer.
@@ -528,12 +580,20 @@ export function apply(ctx: Context, config: Config = {}): void {
   // provider routes. Codex adds only scoped transport behavior and capability
   // metadata; failed remote operations continue through the generic path.
   watchConfiguredGptModels(ctx)
+  const codexSettings = installCodexSettings(ctx)
+  // Keep these controls in the request config rather than mutating provider
+  // settings. That makes a change apply to the next step without rebuilding
+  // the user's model catalog, while the LLM service still freezes it per call.
+  ctx.on('agent/request', async (_payload, next) => {
+    const request = await next()
+    return applyCodexRequestSettings(request, codexSettings.current())
+  })
   if ((resolved.hostedWebSearch || resolved.remoteCompact) && typeof (ctx as unknown as { effect?: unknown }).effect === 'function') {
     const disposeHostedWebSearch = installHostedWebSearch()
     ctx.effect(() => disposeHostedWebSearch, 'codex: Responses transport wrapper')
   }
   if (resolved.hostedWebSearch || resolved.remoteCompact) {
-    ctx.on('llm/stream', (options, next) => {
+    ctx.on('llm/stream', ((options: any, next: any) => {
       if (resolved.remoteCompact && options.purpose === 'compaction' && isGptModel(options.model)) {
         return remoteCompactStream(ctx, options, next)
       }
@@ -543,7 +603,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         return hostedWebSearchStream(next)
       }
       return next()
-    })
+    }) as any)
   }
   ctx.systemPrompt.section({ name: 'codex:base', order: 10, text: CODEX_BASE_PROMPT })
   registerExecTools(ctx, resolved)
