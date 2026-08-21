@@ -29,7 +29,7 @@ baseURL: https://your-responses-endpoint.example.com
 apiKeyEnv: OPENAI_API_KEY
 ```
 
-模型列表中填写中转站实际支持的 GPT 模型 ID。
+模型列表中填写中转站实际支持的 GPT 模型。
 
 ## 请求设置
 
