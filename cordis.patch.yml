@@ -3,3 +3,8 @@
     # lives in presets/codex/agent.cordis.yml, so other presets stay unchanged.
     - id: codex-preset-installer
       name: '@shuind/dsh-codex-harness/installer'
+    # Register the browser face as part of the bundle. Without this explicit
+    # entry, a profile can load the host installer while the Web client never
+    # receives Fast/context controls.
+    - id: codex-client
+      name: '@shuind/dsh-codex-harness'
