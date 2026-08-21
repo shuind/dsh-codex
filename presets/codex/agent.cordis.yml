@@ -18,6 +18,19 @@
 - id: codex-tools
   name: '@shuind/dsh-codex-harness'
 
+# The generic DSH pi-ai adapter still owns the user's configured provider,
+# endpoint, API key, and model. Codex's remote-first transport wrapper is
+# installed only in this Codex scope and falls back to the generic DSH path.
+
+# Keep the local tool mounted as the fallback. Codex rewrites the final GPT
+# Responses request to a hosted web_search tool first; a failed remote request
+# is retried through this unchanged local function-tool path.
+- id: codex-web-search
+  name: '@deepseek-ai/dsh-tool-web'
+  config:
+    search: true
+    fetch: false
+
 # PTY execution is optional. Pipe-backed exec_command remains available on all
 # platforms through the shell capability consumed by the Codex tool layer.
 - id: codex-terminal

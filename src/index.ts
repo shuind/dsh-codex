@@ -2,6 +2,9 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { FsInfo, FsTarget, FsWriteIntent } from '@deepseek-ai/dsh-fs'
@@ -16,9 +19,10 @@ import { applyPatchHunks, parsePatch } from './patch.ts'
 import type { PatchFile } from './patch.ts'
 import { renderExecResult, runExecCommand, runWriteStdin } from './exec.ts'
 import type { ExecCommandArgs, ExecResult, WriteStdinArgs } from './exec.ts'
+import { hostedWebSearchStream, installHostedWebSearch, remoteCompactStream } from './remote.ts'
 
 export const name = 'codex'
-export const inject = ['tools', 'systemPrompt', 'shell', 'fs']
+export const inject = ['tools', 'systemPrompt', 'shell', 'fs', 'llm', 'credentials']
 
 /** Configuration for the Codex shell result bridge. */
 export interface Config {
@@ -30,6 +34,10 @@ export interface Config {
   writeYieldTimeMs?: number
   /** Maximum output retained in one canonical result, in UTF-8 bytes. */
   maxOutputBytes?: number
+  /** Send GPT Responses requests with the native hosted web_search tool first. */
+  hostedWebSearch?: boolean
+  /** Use the provider's /responses/compact endpoint before local compaction. */
+  remoteCompact?: boolean
 }
 
 /** Runtime configuration schema for the Codex tool bridge. */
@@ -38,7 +46,124 @@ export const Config: z<Config> = z.object({
   pollYieldTimeMs: z.number().step(1).min(0).default(5_000),
   writeYieldTimeMs: z.number().step(1).min(0).default(250),
   maxOutputBytes: z.number().step(1).min(1).default(64_000),
+  hostedWebSearch: z.boolean().default(true),
+  remoteCompact: z.boolean().default(true),
 })
+
+const LLM_PI_AI_SETTINGS = settingsNamespace('llm-pi-ai')
+const GPT_REASONING_EFFORTS = {
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  xhigh: 'xhigh',
+  max: 'max',
+} as const
+
+type CodexReasoningEfforts = false | Record<string, string | null>
+
+function codexReasoningEfforts(configured: CodexReasoningEfforts | undefined): CodexReasoningEfforts {
+  if (configured === false) return false
+  const filtered = configured === undefined
+    ? {}
+    : Object.fromEntries(Object.entries(configured).filter(([level]) => level !== 'off' && level !== 'minimal'))
+  return Object.keys(filtered).length === 0 ? GPT_REASONING_EFFORTS : filtered
+}
+
+export interface CodexModelProfile {
+  id: string
+  input?: string[]
+  reasoningEfforts?: false | Record<string, string | null>
+  [key: string]: unknown
+}
+
+interface CodexModelOverride {
+  input?: string[]
+  reasoningEfforts?: false | Record<string, string | null>
+  [key: string]: unknown
+}
+
+interface CodexProviderProfile {
+  models?: CodexModelProfile[]
+  modelOverrides?: Record<string, CodexModelOverride>
+  [key: string]: unknown
+}
+
+/** GPT model ids are the only models whose relay capabilities Codex fills in. */
+function isGptModel(id: string): boolean {
+  return /(?:^|\/)(?:gpt|chatgpt)(?:[-_.]|\d|$)/i.test(id)
+}
+
+/** Add Codex defaults without overwriting explicit user capabilities. */
+export function enrichCodexModel(model: CodexModelProfile): CodexModelProfile {
+  if (!isGptModel(model.id)) return model
+  const input = model.input === undefined || model.input.length === 0
+    ? ['text', 'image']
+    : model.input
+  const efforts = codexReasoningEfforts(model.reasoningEfforts)
+  if (input === model.input && efforts === model.reasoningEfforts) return model
+  return { ...model, input, reasoningEfforts: efforts }
+}
+
+/** The settings schema keys modelOverrides by id, so its values must not carry an id field. */
+function enrichCodexOverride(id: string, model: CodexModelOverride): CodexModelOverride {
+  if (!isGptModel(id)) return model
+  const enriched = enrichCodexModel({ ...model, id })
+  const { id: _id, ...withoutId } = enriched
+  const inputMissing = model.input === undefined || model.input.length === 0
+  const nextEfforts = codexReasoningEfforts(model.reasoningEfforts)
+  const reasoningChanged = JSON.stringify(nextEfforts) !== JSON.stringify(model.reasoningEfforts)
+  if (!inputMissing && !reasoningChanged) return model
+  return { ...withoutId, reasoningEfforts: nextEfforts }
+}
+
+interface LlmPiAiSettings {
+  providers?: Record<string, CodexProviderProfile>
+}
+
+/** Persist only missing GPT capabilities into the user's existing pi-ai model config. */
+async function enrichConfiguredGptModels(ctx: Context): Promise<void> {
+  const settings = ctx.get('settings') as { get(ns: unknown): unknown; update(ns: unknown, patch: object): Promise<void> } | undefined
+  if (settings === undefined) return
+  const current = settings.get(LLM_PI_AI_SETTINGS) as LlmPiAiSettings | undefined
+  if (current?.providers === undefined) return
+  const providers: Record<string, Record<string, unknown>> = {}
+  let changed = false
+  for (const [provider, profile] of Object.entries(current.providers)) {
+    const models = profile.models
+    const overrides = profile.modelOverrides
+    const nextModels = Array.isArray(models) ? models.map(enrichCodexModel) : undefined
+    const nextOverrides = overrides === undefined
+      ? undefined
+      : Object.fromEntries(Object.entries(overrides).map(([id, model]) => [id, enrichCodexOverride(id, model)]))
+    const modelsChanged = nextModels !== undefined && nextModels.some((model, index) => model !== models?.[index])
+    const overridesChanged = nextOverrides !== undefined
+      && overrides !== undefined
+      && Object.entries(nextOverrides).some(([id, model]) => model !== overrides[id])
+    if (modelsChanged || overridesChanged) {
+      changed = true
+      providers[provider] = {
+        ...modelsChanged ? { models: nextModels } : {},
+        ...overridesChanged ? { modelOverrides: nextOverrides } : {},
+      }
+    }
+  }
+  if (changed) await settings.update(LLM_PI_AI_SETTINGS, { providers })
+}
+
+/** Keep newly edited GPT model entries enriched while Codex mode is mounted. */
+function watchConfiguredGptModels(ctx: Context): void {
+  let tail = Promise.resolve()
+  const schedule = (): void => {
+    tail = tail.then(() => enrichConfiguredGptModels(ctx)).catch(error => {
+      ctx.logger.warn('codex: could not enrich configured GPT model capabilities')
+      ctx.logger.warn(error)
+    })
+  }
+  ctx.on('settings/document-updated', (ns) => {
+    if (ns === LLM_PI_AI_SETTINGS) schedule()
+  })
+  schedule()
+}
 
 const CODEX_BASE_PROMPT = String.raw`You are Codex, based on {{model}}. You are running as a coding agent in dsh Web on a user's computer.
 
@@ -393,9 +518,32 @@ export function apply(ctx: Context, config: Config = {}): void {
     pollYieldTimeMs: config.pollYieldTimeMs ?? 5_000,
     writeYieldTimeMs: config.writeYieldTimeMs ?? 250,
     maxOutputBytes: config.maxOutputBytes ?? 64_000,
+    hostedWebSearch: config.hostedWebSearch ?? true,
+    remoteCompact: config.remoteCompact ?? true,
   }
   if (ctx.fs.sandboxMode !== undefined && ctx.get('sandboxPolicy') === undefined) {
     throw new Error('codex: a sandboxing filesystem requires ctx.sandboxPolicy')
+  }
+  // The generic pi-ai plugin remains the owner of the user's configured
+  // provider routes. Codex adds only scoped transport behavior and capability
+  // metadata; failed remote operations continue through the generic path.
+  watchConfiguredGptModels(ctx)
+  if ((resolved.hostedWebSearch || resolved.remoteCompact) && typeof (ctx as unknown as { effect?: unknown }).effect === 'function') {
+    const disposeHostedWebSearch = installHostedWebSearch()
+    ctx.effect(() => disposeHostedWebSearch, 'codex: Responses transport wrapper')
+  }
+  if (resolved.hostedWebSearch || resolved.remoteCompact) {
+    ctx.on('llm/stream', (options, next) => {
+      if (resolved.remoteCompact && options.purpose === 'compaction' && isGptModel(options.model)) {
+        return remoteCompactStream(ctx, options, next)
+      }
+      if ((resolved.hostedWebSearch || resolved.remoteCompact)
+        && options.purpose === undefined
+        && isGptModel(options.model)) {
+        return hostedWebSearchStream(next)
+      }
+      return next()
+    })
   }
   ctx.systemPrompt.section({ name: 'codex:base', order: 10, text: CODEX_BASE_PROMPT })
   registerExecTools(ctx, resolved)

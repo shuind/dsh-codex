@@ -1,16 +1,27 @@
 import { describe, expect, it } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
-import { apply } from '../src/index.ts'
+import { apply, enrichCodexModel } from '../src/index.ts'
+import {
+  addHostedWebSearch,
+  hostedWebSearchStream,
+  installHostedWebSearch,
+  remoteCompactStream,
+  replaceRemoteCompactions,
+} from '../src/remote.ts'
 
-function mount(): { definitions: ToolDefinition[]; promptSections: string[] } {
+function mount(settings?: { get(ns: unknown): unknown; update(ns: unknown, patch: object): Promise<void> }): {
+  definitions: ToolDefinition[]
+  promptSections: string[]
+} {
   const definitions: ToolDefinition[] = []
   const promptSections: string[] = []
   const ctx = {
     tools: { register: (definition: ToolDefinition) => { definitions.push(definition) } },
     systemPrompt: { section: (section: { name: string }) => { promptSections.push(section.name) } },
     fs: { sandboxMode: undefined },
-    get: () => undefined,
+    get: () => settings,
+    on: () => () => {},
     inject: () => {},
   } as unknown as Context
   apply(ctx)
@@ -18,6 +29,303 @@ function mount(): { definitions: ToolDefinition[]; promptSections: string[] } {
 }
 
 describe('Codex tool catalog', () => {
+  it('emits a native Responses hosted web_search tool and removes the local function tool', () => {
+    const body = addHostedWebSearch({
+      model: 'gpt-5.4',
+      tools: [
+        { type: 'function', name: 'web_search', parameters: {} },
+        { type: 'function', name: 'apply_patch', parameters: {} },
+      ],
+    })
+    expect(body.tools).toEqual([
+      { type: 'function', name: 'apply_patch', parameters: {} },
+      { type: 'web_search', external_web_access: true },
+    ])
+  })
+
+  it('restores a remote compaction item at the final Responses wire boundary', () => {
+    expect(replaceRemoteCompactions({
+      input: [{
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: '<compacted-summary><codex-remote-compaction>opaque</codex-remote-compaction></compacted-summary>' }],
+      }],
+    })).toEqual({
+      input: [{ type: 'compaction', encrypted_content: 'opaque' }],
+    })
+  })
+
+  it('limits hosted request rewriting to the Codex stream scope and preserves fallback errors', async () => {
+    const originalFetch = globalThis.fetch
+    const requests: object[] = []
+    globalThis.fetch = async (input, init) => {
+      const request = new Request(input, init)
+      requests.push(JSON.parse(await request.text()))
+      return Response.json({ ok: true })
+    }
+    const dispose = installHostedWebSearch()
+    try {
+      await globalThis.fetch('https://relay.example/v1/responses', {
+        method: 'POST',
+        body: JSON.stringify({ model: 'gpt-5.4', tools: [{ type: 'function', name: 'web_search' }] }),
+      })
+      await (async function* () {
+        yield* hostedWebSearchStream(async function* () {
+          await globalThis.fetch('https://relay.example/v1/responses', {
+            method: 'POST',
+            body: JSON.stringify({ model: 'gpt-5.4', tools: [{ type: 'function', name: 'web_search' }] }),
+          })
+        })
+      })().next()
+    } finally {
+      dispose()
+      globalThis.fetch = originalFetch
+    }
+    expect(requests[0]).toEqual({ model: 'gpt-5.4', tools: [{ type: 'function', name: 'web_search' }] })
+    expect(requests[1]).toEqual({
+      model: 'gpt-5.4',
+      tools: [{ type: 'web_search', external_web_access: true }],
+    })
+  })
+
+  it('falls back to the untouched local request when hosted fetch throws', async () => {
+    const originalFetch = globalThis.fetch
+    const requests: object[] = []
+    let calls = 0
+    globalThis.fetch = async (input, init) => {
+      calls += 1
+      if (calls === 1) throw new TypeError('network unavailable')
+      const request = new Request(input, init)
+      requests.push(JSON.parse(await request.text()))
+      return Response.json({ ok: true })
+    }
+    const dispose = installHostedWebSearch()
+    try {
+      await (async function* () {
+        yield* hostedWebSearchStream(async function* () {
+          await globalThis.fetch('https://relay.example/v1/responses', {
+            method: 'POST',
+            body: JSON.stringify({ model: 'gpt-5.4', tools: [{ type: 'function', name: 'web_search' }] }),
+          })
+        })
+      })().next()
+    } finally {
+      dispose()
+      globalThis.fetch = originalFetch
+    }
+    expect(calls).toBe(2)
+    expect(requests).toEqual([{ model: 'gpt-5.4', tools: [{ type: 'function', name: 'web_search' }] }])
+  })
+
+  it('leaves GPT requests without web_search untouched', async () => {
+    const originalFetch = globalThis.fetch
+    const requests: object[] = []
+    globalThis.fetch = async (input, init) => {
+      const request = new Request(input, init)
+      requests.push(JSON.parse(await request.text()))
+      return Response.json({ ok: true })
+    }
+    const dispose = installHostedWebSearch()
+    try {
+      await (async function* () {
+        yield* hostedWebSearchStream(async function* () {
+          await globalThis.fetch('https://relay.example/v1/responses', {
+            method: 'POST',
+            body: JSON.stringify({ model: 'gpt-5.4', tools: [{ type: 'function', name: 'apply_patch' }] }),
+          })
+        })
+      })().next()
+    } finally {
+      dispose()
+      globalThis.fetch = originalFetch
+    }
+    expect(requests).toEqual([{ model: 'gpt-5.4', tools: [{ type: 'function', name: 'apply_patch' }] }])
+  })
+
+  it('restores a compaction marker even when the request has no web_search tool', async () => {
+    const originalFetch = globalThis.fetch
+    const requests: object[] = []
+    globalThis.fetch = async (input, init) => {
+      const request = new Request(input, init)
+      requests.push(JSON.parse(await request.text()))
+      return Response.json({ ok: true })
+    }
+    const dispose = installHostedWebSearch()
+    try {
+      await (async function* () {
+        yield* hostedWebSearchStream(async function* () {
+          await globalThis.fetch('https://relay.example/v1/responses', {
+            method: 'POST',
+            body: JSON.stringify({
+              model: 'gpt-5.4',
+              input: [{
+                role: 'user',
+                content: [{ type: 'input_text', text: '<codex-remote-compaction>opaque</codex-remote-compaction>' }],
+              }],
+            }),
+          })
+        })
+      })().next()
+    } finally {
+      dispose()
+      globalThis.fetch = originalFetch
+    }
+    expect(requests).toEqual([{ model: 'gpt-5.4', input: [{ type: 'compaction', encrypted_content: 'opaque' }] }])
+  })
+
+  it('keeps the marker restoration active when remote compaction falls back locally', async () => {
+    const originalFetch = globalThis.fetch
+    const requests: object[] = []
+    let calls = 0
+    globalThis.fetch = async (input, init) => {
+      calls += 1
+      const request = new Request(input, init)
+      const body = JSON.parse(await request.text())
+      if (calls === 1) throw new TypeError('compact endpoint unavailable')
+      requests.push(body)
+      return Response.json({ ok: true })
+    }
+    const ctx = {
+      get: (name: string) => name === 'settings'
+        ? { get: () => ({ providers: { relay: { api: 'openai-responses', baseURL: 'https://relay.example/v1', apiKeyEnv: 'RELAY_KEY' } } }) }
+        : { resolve: async () => ({ value: 'secret' }) },
+      logger: { warn: () => {} },
+    } as unknown as Context
+    const dispose = installHostedWebSearch()
+    try {
+      const chunks = remoteCompactStream(ctx, {
+        provider: 'relay',
+        model: 'gpt-5.4',
+        messages: [
+          { role: 'user', content: [{ type: 'text', text: 'history' }] },
+          { role: 'user', content: [{ type: 'text', text: 'compact now' }] },
+        ],
+        purpose: 'compaction',
+      } as never, async function* () {
+        await globalThis.fetch('https://relay.example/v1/responses', {
+          method: 'POST',
+          body: JSON.stringify({
+            model: 'gpt-5.4',
+            input: [{
+              role: 'user',
+              content: [{ type: 'input_text', text: '<codex-remote-compaction>opaque</codex-remote-compaction>' }],
+            }],
+          }),
+        })
+        yield { type: 'text-delta', index: 0, text: '<codex-remote-compaction>opaque</codex-remote-compaction>' } as never
+      })
+      for await (const _chunk of chunks) {
+        // Consume the fallback stream; its own adapter performs the fetch.
+      }
+    } finally {
+      dispose()
+      globalThis.fetch = originalFetch
+    }
+    expect(requests).toEqual([{ model: 'gpt-5.4', input: [{ type: 'compaction', encrypted_content: 'opaque' }] }])
+  })
+
+  it('uses the configured Responses route for remote compaction and returns a replay marker', async () => {
+    const originalFetch = globalThis.fetch
+    let requestUrl = ''
+    let requestBody: Record<string, unknown> | undefined
+    globalThis.fetch = async (input, init) => {
+      const request = new Request(input, init)
+      requestUrl = request.url
+      requestBody = JSON.parse(await request.text()) as Record<string, unknown>
+      return Response.json({ output: [{ type: 'compaction', encrypted_content: 'opaque' }] })
+    }
+    const ctx = {
+      get: (name: string) => name === 'settings'
+        ? { get: () => ({ providers: { relay: { api: 'openai-responses', baseURL: 'https://relay.example/v1', apiKeyEnv: 'RELAY_KEY' } } }) }
+        : { resolve: async () => ({ value: 'secret' }) },
+      logger: { warn: () => {} },
+    } as unknown as Context
+    const chunks: unknown[] = []
+    try {
+      for await (const chunk of remoteCompactStream(ctx, {
+        provider: 'relay',
+        model: 'gpt-5.4',
+        messages: [
+          { role: 'user', content: [{ type: 'text', text: 'history' }] },
+          { role: 'user', content: [{ type: 'text', text: 'compact now' }] },
+        ],
+        purpose: 'compaction',
+      } as never, async function* () { yield { type: 'finish', reason: { kind: 'stop' } } as never })) {
+        chunks.push(chunk)
+      }
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+    expect(requestUrl).toBe('https://relay.example/v1/responses/compact')
+    expect(requestBody).toMatchObject({ model: 'gpt-5.4', input: [{ role: 'user' }] })
+    expect(chunks).toContainEqual(expect.objectContaining({ type: 'text-delta', text: '<codex-remote-compaction>opaque</codex-remote-compaction>' }))
+  })
+
+  it('adds image and reasoning defaults only to GPT models', () => {
+    expect(enrichCodexModel({ id: 'gpt-5.4' })).toMatchObject({
+      input: ['text', 'image'],
+      reasoningEfforts: {
+        low: 'low',
+        medium: 'medium',
+        high: 'high',
+        xhigh: 'xhigh',
+        max: 'max',
+      },
+    })
+    expect(enrichCodexModel({ id: 'qwen3' })).toEqual({ id: 'qwen3' })
+    expect(enrichCodexModel({
+      id: 'gpt-5.4',
+      input: ['text'],
+      reasoningEfforts: { off: null, minimal: 'minimal', low: 'low' },
+    })).toEqual({ id: 'gpt-5.4', input: ['text'], reasoningEfforts: { low: 'low' } })
+    expect(enrichCodexModel({ id: 'gpt-5.4', input: ['text'], reasoningEfforts: false }))
+      .toEqual({ id: 'gpt-5.4', input: ['text'], reasoningEfforts: false })
+  })
+
+  it('writes missing GPT capabilities into the configured llm-pi-ai model profile', async () => {
+    const updates: object[] = []
+    const settings = {
+      get: () => ({
+        providers: {
+          relay: {
+            models: [{ id: 'gpt-5.4', input: [], reasoningEfforts: {} }, { id: 'qwen3' }],
+          },
+        },
+      }),
+      update: (_ns: unknown, patch: object) => { updates.push(patch); return Promise.resolve() },
+    }
+    mount(settings)
+    await Promise.resolve()
+    expect(updates).toHaveLength(1)
+    expect(updates[0]).toMatchObject({
+      providers: {
+        relay: {
+          models: [{ id: 'gpt-5.4', input: ['text', 'image'] }, { id: 'qwen3' }],
+        },
+      },
+    })
+  })
+
+  it('keeps modelOverrides keyed by id without inserting an invalid id field', async () => {
+    const updates: object[] = []
+    const settings = {
+      get: () => ({ providers: { relay: { modelOverrides: { 'gpt-5.4': {} } } } }),
+      update: (_ns: unknown, patch: object) => { updates.push(patch); return Promise.resolve() },
+    }
+    mount(settings)
+    await Promise.resolve()
+    expect(updates[0]).toMatchObject({
+      providers: {
+        relay: {
+          modelOverrides: {
+            'gpt-5.4': { input: ['text', 'image'], reasoningEfforts: { medium: 'medium' } },
+          },
+        },
+      },
+    })
+    expect(JSON.stringify(updates[0])).not.toContain('"id":"gpt-5.4"')
+  })
+
   it('registers only the four Codex core tools with exact descriptions', () => {
     const { definitions, promptSections } = mount()
     expect(definitions.map(definition => definition.name)).toEqual([
