@@ -21,7 +21,7 @@ dsh plugin --profile web add @shuind/dsh-codex-harness@0.1.12
 
 ## 配置
 
-继续在 DSH 的 Models / `llm-pi-ai` 中配置 Responses provider、endpoint、API key 和模型。例如：
+在 DSH 的 Models / `llm-pi-ai` 中配置 Responses provider、endpoint、API key 和模型。例如：
 
 ```yaml
 api: openai-responses
